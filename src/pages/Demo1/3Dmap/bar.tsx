@@ -1,4 +1,4 @@
-import { use, useEffect, useMemo, useRef } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, type ThreeElements } from "@react-three/fiber";
 import {
   AdditiveBlending,
@@ -52,12 +52,27 @@ export default function Bar(props: CityBarProps) {
 
   const [texture1, texture2] = use(textures);
 
-  const barHeight = useMemo(() => {
+  // 目标高度
+  const targetHeight = useMemo(() => {
     return 4.0 * factor * (value / max);
-  }, []);
+  }, [value, factor, max]);
+
+  // 当前显示高度（用于动画）
+  const [barHeight, setBarHeight] = useState(targetHeight);
+  const currentHeightRef = useRef(targetHeight);
 
   useFrame((_, delta) => {
     quanRef.current.rotation.z += delta + 0.02;
+    
+    // 光柱高度动画 - 匀速过渡
+    const diff = targetHeight - currentHeightRef.current;
+    if (Math.abs(diff) > 0.01) {
+      // 匀速动画，每秒变化速度
+      const speed = 5; // 每秒变化的高度单位
+      const step = Math.sign(diff) * Math.min(Math.abs(diff), speed * delta);
+      currentHeightRef.current += step;
+      setBarHeight(currentHeightRef.current);
+    }
   });
 
   const meshRef = useRef<InstancedMesh>(null!);

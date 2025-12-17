@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import styled from "styled-components";
 import Content from "./content";
 import Map from "./3Dmap";
+import { useRealtimeStore, fetchCurrentData } from "./stores/realtimeStore";
 
 const Wrapper = styled.div`
   position: relative;
@@ -9,6 +11,20 @@ const Wrapper = styled.div`
 `;
 
 export default function Index() {
+  const connect = useRealtimeStore((s) => s.connect);
+  const disconnect = useRealtimeStore((s) => s.disconnect);
+
+  useEffect(() => {
+    // 先获取当前数据
+    fetchCurrentData();
+    // 建立SSE连接
+    connect();
+    
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
   return (
     <Wrapper>
       <Map />

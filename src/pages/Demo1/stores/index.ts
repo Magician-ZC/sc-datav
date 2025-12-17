@@ -12,10 +12,14 @@ interface ConfigStore {
   viewLevel: "province" | "city";
   selectedCity: string | null;
   selectedCityCode: number | null;
-  toggle: (key: keyof Omit<ConfigStore, "toggle" | "setSelectedCity" | "backToProvince" | "toggleBgMode">) => void;
+  // 全屏状态
+  isFullscreen: boolean;
+  labelScale: number;  // 标签缩放比例
+  toggle: (key: keyof Omit<ConfigStore, "toggle" | "setSelectedCity" | "backToProvince" | "toggleBgMode" | "setFullscreen">) => void;
   toggleBgMode: () => void;
   setSelectedCity: (city: string, adcode: number) => void;
   backToProvince: () => void;
+  setFullscreen: (isFullscreen: boolean) => void;
 }
 
 export const useConfigStore = create<ConfigStore>()(
@@ -29,6 +33,8 @@ export const useConfigStore = create<ConfigStore>()(
     viewLevel: "province",
     selectedCity: null,
     selectedCityCode: null,
+    isFullscreen: false,
+    labelScale: 1,
     toggle: (key) => set((s) => ({ [key]: !s[key] })),
     toggleBgMode: () => set((s) => ({ bgMode: s.bgMode === "light" ? "starry" : "light" })),
     // 切换视图时不重置mapPlayComplete，避免表单动效重新播放
@@ -41,6 +47,11 @@ export const useConfigStore = create<ConfigStore>()(
       viewLevel: "province", 
       selectedCity: null, 
       selectedCityCode: null,
+    }),
+    setFullscreen: (isFullscreen) => set({ 
+      isFullscreen,
+      // 全屏时放大1.5倍，退出全屏恢复
+      labelScale: isFullscreen ? 1.5 : 1,
     }),
   }))
 );

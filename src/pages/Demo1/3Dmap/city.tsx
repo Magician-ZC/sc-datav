@@ -14,9 +14,10 @@ import Tooltip from "./tooltip";
 import Bar from "./bar";
 import Label from "./label";
 
-import cityData from "../cityData";
+import staticCityData from "../cityData";
 import { getCityConfig } from "../cityConfig";
 import { useConfigStore } from "../stores";
+import { useRealtimeStore } from "../stores/realtimeStore";
 
 export interface CityProps {
   bbox: Box2;
@@ -39,6 +40,10 @@ export default function City(props: CityProps) {
   const config = getCityConfig(data.city);
   const setSelectedCity = useConfigStore((s) => s.setSelectedCity);
   const viewLevel = useConfigStore((s) => s.viewLevel);
+  
+  // 获取实时数据，如果没有则使用静态数据
+  const realtimeCityData = useRealtimeStore((s) => s.cityMapData);
+  const cityData = realtimeCityData[data.city] ?? staticCityData[data.city as keyof typeof staticCityData];
 
   const [shape, shapeGeometry] = useMemo(() => {
     const shapes = data.points.map((e) => new Shape(e));
@@ -94,7 +99,7 @@ export default function City(props: CityProps) {
 
       <Bar
         position={data.cityId}
-        value={cityData[data.city as keyof typeof cityData]?.population ?? 0}>
+        value={cityData?.population ?? 0}>
         {(barHeight) => (
           <>
             <Label
@@ -108,7 +113,7 @@ export default function City(props: CityProps) {
               ref={tooltipRef}
               data={{
                 city: data.city,
-                ...cityData[data.city as keyof typeof cityData],
+                ...cityData,
               }}
               position={[0, 0, barHeight + 7]}
               visible={false}

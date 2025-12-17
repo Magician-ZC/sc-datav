@@ -5,6 +5,7 @@ import { useConfigStore } from "./stores";
 
 import Headder from "./headder";
 import Footer from "./footer";
+import RealtimePanel from "./RealtimePanel";
 
 const BackButton = styled.button`
   position: fixed;
@@ -215,6 +216,9 @@ export default function Content() {
       )}
       
       <Headder />
+      
+      {/* 左侧实时数据面板 */}
+      <RealtimePanel />
       
       {/* 右侧事件弹幕 - 时间早的在上面，新事件从底部冒出 */}
       {mode && (
