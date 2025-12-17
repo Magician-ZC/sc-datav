@@ -1,23 +1,11 @@
-import { use, useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import { gsap } from "gsap";
-import {
-  Box2,
-  LineSegments,
-  Mesh,
-  RepeatWrapping,
-  Vector2,
-  type Group,
-} from "three";
+import { Box2, LineSegments, Mesh, Vector2, type Group } from "three";
 import { geoMercator } from "d3-geo";
 import type { CityGeoJSON } from "@/types/map";
 import City, { type CityProps } from "./city";
-import loadTexture from "../helpers/loadTexture";
 import { useConfigStore } from "../stores";
-
-import map from "@/assets/sc_map.png";
-import normalMap from "@/assets/sc_normal_map.png";
-import Heatmap from "./heatmap";
 
 export interface BaseProps {
   depth?: number;
@@ -25,21 +13,13 @@ export interface BaseProps {
   outlineData?: CityGeoJSON;
 }
 
-const textures = Promise.all([
-  loadTexture(map, (tex) => {
-    tex.wrapS = tex.wrapT = RepeatWrapping;
-  }),
-  loadTexture(normalMap, (tex) => {
-    tex.wrapS = tex.wrapT = RepeatWrapping;
-  }),
-]);
+// 浮岛间隙系数 - 控制区域之间的间距大小
+const GAP_FACTOR = 0.15;
 
 export default function Base(props: BaseProps) {
   const { data, depth = 6 } = props;
   const groupRef = useRef<Group>(null!);
   const camera = useThree((state) => state.camera);
-
-  const [texture1, texture2] = use(textures);
 
   const projection = useMemo(() => {
     return geoMercator()
@@ -49,8 +29,23 @@ export default function Base(props: BaseProps) {
   }, [data]);
 
   const { regions, bbox } = useMemo(() => {
-    const regions: CityProps["data"][] = [];
+    const regions: (CityProps["data"] & { adcode?: number; offset: [number, number] })[] = [];
     const bbox = new Box2();
+    
+    // 先计算所有城市的质心投影坐标
+    const cityCentroids: { x: number; y: number }[] = [];
+    
+    data.features.forEach((feature) => {
+      const center = feature.properties.centroid ?? feature.properties.center;
+      const [x, y] = projection(center)!;
+      cityCentroids.push({ x, y: -y });
+    });
+    
+    // 计算省的整体中心（所有城市质心的平均值）
+    const provinceCenter = {
+      x: cityCentroids.reduce((sum, c) => sum + c.x, 0) / cityCentroids.length,
+      y: cityCentroids.reduce((sum, c) => sum + c.y, 0) / cityCentroids.length,
+    };
 
     const toV2 = (coord: number[]) => {
       const [x, y] = projection(coord as [number, number])!;
@@ -68,14 +63,26 @@ export default function Base(props: BaseProps) {
         []
       );
 
-      const [x, y] = projection(
-        feature.properties.centroid ?? feature.properties.center
-      )!;
+      const center = feature.properties.centroid ?? feature.properties.center;
+      const [x, y] = projection(center)!;
+      const cityCenter = { x, y: -y };
+      
+      // 计算从省中心指向城市中心的方向向量
+      const dx = cityCenter.x - provinceCenter.x;
+      const dy = cityCenter.y - provinceCenter.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // 沿着这个方向偏移，偏移量与距离成正比
+      const offset: [number, number] = distance > 0.1 
+        ? [dx * GAP_FACTOR, dy * GAP_FACTOR]
+        : [0, 0];
 
       regions.push({
         city: feature.properties.name,
         cityId: [x, -y, depth + 0.1],
         points,
+        adcode: feature.properties.adcode,
+        offset,
       });
     });
 
@@ -138,15 +145,10 @@ export default function Base(props: BaseProps) {
           depth={depth}
           bbox={bbox}
           data={region}
-          map={texture1}
-          normalMap={texture2}
+          adcode={region.adcode}
+          offset={region.offset}
         />
       ))}
-      <Heatmap
-        renderOrder={11}
-        projection={projection}
-        position-z={depth + 1}
-      />
     </group>
   );
 }

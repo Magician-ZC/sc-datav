@@ -13,32 +13,33 @@ import ShapeMesh from "./shape";
 import Tooltip from "./tooltip";
 import Bar from "./bar";
 import Label from "./label";
-
-import cityData from "../cityData";
-import { getCityConfig } from "../cityConfig";
+import { getDistrictData } from "../districtData";
 import { useConfigStore } from "../stores";
 
-export interface CityProps {
+export interface DistrictProps {
   bbox: Box2;
   depth: number;
-  adcode?: number;
-  offset: [number, number]; // 浮岛偏移量
+  color: string;
+  sideColor: string;
+  offset: [number, number];
   data: {
-    city: string;
-    cityId: [x: number, y: number, z: number];
+    name: string;
+    centerId: [x: number, y: number, z: number];
     points: Vector2[][];
   };
 }
 
-export default function City(props: CityProps) {
-  const { data, bbox, depth, adcode, offset } = props;
+export default function District(props: DistrictProps) {
+  const { data, bbox, depth, color, sideColor, offset } = props;
   const groupRef = useRef<Group>(null!);
   const tooltipRef = useRef<{ open: () => void; close: () => void }>(null!);
   const vector3 = useRef(new Vector3(1, 1, 1));
 
-  const config = getCityConfig(data.city);
-  const setSelectedCity = useConfigStore((s) => s.setSelectedCity);
-  const viewLevel = useConfigStore((s) => s.viewLevel);
+  // 获取当前选中的城市名称
+  const selectedCity = useConfigStore((s) => s.selectedCity);
+  
+  // 获取区县数据
+  const districtInfo = getDistrictData(data.name);
 
   const [shape, shapeGeometry] = useMemo(() => {
     const shapes = data.points.map((e) => new Shape(e));
@@ -50,10 +51,33 @@ export default function City(props: CityProps) {
     groupRef.current.scale.lerp(vector3.current, 0.1);
   });
 
+  // 点击区县跳转到CRM地图（父页面跳转，因为当前是iframe）
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
-    if (viewLevel === "province" && adcode) {
-      setSelectedCity(data.city, adcode);
+    
+    // 构建跳转URL，带上city和district参数
+    const params = new URLSearchParams();
+    if (selectedCity) {
+      // 去掉"市"后缀，与CRM地图参数格式一致
+      params.set('city', selectedCity.replace('市', ''));
+    }
+    // 区县名称直接使用
+    params.set('district', data.name);
+    params.set('zoom', '15'); // 设置合适的缩放级别
+    
+    // 通过父页面跳转到CRM地图（因为当前组件在iframe中）
+    const targetUrl = `/crm/map?${params.toString()}`;
+    
+    // 尝试跳转父页面，如果失败则跳转当前页面
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    } catch {
+      // 跨域情况下使用postMessage
+      window.parent.postMessage({ type: 'navigate', url: targetUrl }, '*');
     }
   };
 
@@ -64,7 +88,7 @@ export default function City(props: CityProps) {
       onClick={handleClick}
       onPointerOver={(e) => {
         e.stopPropagation();
-        vector3.current.setZ(1.5);
+        vector3.current.setZ(1.3);
         tooltipRef.current.open();
         document.body.style.cursor = "pointer";
       }}
@@ -74,7 +98,7 @@ export default function City(props: CityProps) {
         document.body.style.cursor = "auto";
       }}>
       <ShapeMesh position-z={depth + 0.1} bbox={bbox} args={[shape]}>
-        <meshStandardMaterial color={config.color} metalness={0.3} roughness={0.6} />
+        <meshStandardMaterial color={color} metalness={0.3} roughness={0.6} />
       </ShapeMesh>
       <mesh castShadow receiveShadow>
         <extrudeGeometry args={[shape, { depth, steps: 1, bevelEnabled: false }]} />
@@ -84,7 +108,7 @@ export default function City(props: CityProps) {
           metalness={0.2}
           roughness={0.5}
           side={DoubleSide}
-          color={config.sideColor}
+          color={sideColor}
         />
       </mesh>
       <lineSegments position-z={depth + 0.2} raycast={() => null}>
@@ -93,8 +117,10 @@ export default function City(props: CityProps) {
       </lineSegments>
 
       <Bar
-        position={data.cityId}
-        value={cityData[data.city as keyof typeof cityData]?.population ?? 0}>
+        position={data.centerId}
+        value={districtInfo.population}
+        max={600}
+        factor={4}>
         {(barHeight) => (
           <>
             <Label
@@ -102,13 +128,13 @@ export default function City(props: CityProps) {
               position={[0, 0, barHeight + 0.2]}
               distanceFactor={100}
               zIndexRange={[100 - 1000]}>
-              {data.city}
+              {data.name}
             </Label>
             <Tooltip
               ref={tooltipRef}
               data={{
-                city: data.city,
-                ...cityData[data.city as keyof typeof cityData],
+                city: data.name,
+                ...districtInfo,
               }}
               position={[0, 0, barHeight + 7]}
               visible={false}

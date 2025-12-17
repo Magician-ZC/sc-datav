@@ -55,6 +55,7 @@ export default function Bottom() {
   const meshRef1 = useRef<Mesh>(null!);
   const meshRef2 = useRef<Mesh>(null!);
   const rotation = useConfigStore((s) => s.rotation);
+  const bgMode = useConfigStore((s) => s.bgMode);
 
   const [
     gaoGuang1Tex,
@@ -73,8 +74,11 @@ export default function Bottom() {
     meshRef2.current.rotation.z += -0.004;
   });
 
+  // 星空模式下隐藏底盘
+  const isVisible = rotation && bgMode !== "starry";
+
   return (
-    <group visible={rotation} rotation-x={-Math.PI / 2} position-y={-0.1}>
+    <group visible={isVisible} rotation-x={-Math.PI / 2} position-y={-0.1}>
       <mesh>
         <planeGeometry args={[300, 300]} />
         <meshBasicMaterial

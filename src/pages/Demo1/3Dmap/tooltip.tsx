@@ -3,7 +3,7 @@ import { useImperativeHandle, useState, type Ref } from "react";
 import styled from "styled-components";
 
 const TooltipBox = styled.div`
-  background: rgba(255, 245, 232, 0.7);
+  background: rgba(255, 245, 232, 0.9);
   backdrop-filter: blur(10px);
   border-radius: 8px;
   padding: 12px 16px;
@@ -12,23 +12,34 @@ const TooltipBox = styled.div`
   pointer-events: none;
   border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  min-width: 120px;
+  min-width: 140px;
 `;
 
 const CityName = styled.div`
   font-weight: bold;
   margin-bottom: 8px;
-  color: #ea580c;
+  color: #7c3aed;
+  font-size: 14px;
 `;
 
 const DataItem = styled.div`
   display: flex;
   justify-content: space-between;
   margin-bottom: 4px;
+  gap: 12px;
 
   &:last-child {
     margin-bottom: 0;
   }
+`;
+
+const Label = styled.span`
+  color: #6b7280;
+`;
+
+const Value = styled.span`
+  font-weight: 600;
+  color: #374151;
 `;
 
 interface TooltipProps {
@@ -36,8 +47,9 @@ interface TooltipProps {
   data: {
     city: string;
     population: number;
-    gdp: string;
-    area: string;
+    totalCustomers: string;
+    touchedRate: string;
+    convertRate: string;
   };
   position: [number, number, number];
   visible: boolean;
@@ -61,18 +73,18 @@ export default function Tooltip(props: TooltipProps) {
         zIndexRange={[1001 - 1500]}
         style={{ pointerEvents: "none" }}>
         <TooltipBox>
-          <CityName>{data.city}</CityName>
+          <CityName>📊 {data.city}</CityName>
           <DataItem>
-            <span>人口:</span>
-            <span>{data.population}万</span>
+            <Label>客户总数:</Label>
+            <Value>{data.totalCustomers}</Value>
           </DataItem>
           <DataItem>
-            <span>GDP:</span>
-            <span>{data.gdp}</span>
+            <Label>触达率:</Label>
+            <Value style={{ color: '#3b82f6' }}>{data.touchedRate}</Value>
           </DataItem>
           <DataItem>
-            <span>面积:</span>
-            <span>{data.area}</span>
+            <Label>转化率:</Label>
+            <Value style={{ color: '#10b981' }}>{data.convertRate}</Value>
           </DataItem>
         </TooltipBox>
       </Html>
