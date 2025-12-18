@@ -49,12 +49,14 @@ interface RealtimeStore {
   isConnected: boolean;
   lastUpdate: string | null;
   error: string | null;
+  retryCount: number;
   
   // 操作方法
   setData: (data: RealtimeData) => void;
   setCityMapData: (data: CityMapData) => void;
   setConnected: (connected: boolean) => void;
   setError: (error: string | null) => void;
+  resetRetry: () => void;
   
   // SSE连接
   connect: () => void;
@@ -62,6 +64,7 @@ interface RealtimeStore {
 }
 
 let eventSource: EventSource | null = null;
+const MAX_RETRY_COUNT = 3; // 最大重试次数
 
 export const useRealtimeStore = create<RealtimeStore>()(
   subscribeWithSelector((set, get) => ({
@@ -70,6 +73,7 @@ export const useRealtimeStore = create<RealtimeStore>()(
     isConnected: false,
     lastUpdate: null,
     error: null,
+    retryCount: 0,
     
     setData: (data) => {
       // 转换城市数据为地图格式
@@ -94,14 +98,29 @@ export const useRealtimeStore = create<RealtimeStore>()(
         cityMapData,
         lastUpdate: data.timestamp,
         error: null,
+        retryCount: 0, // 成功收到数据，重置重试计数
       });
     },
     
     setCityMapData: (data) => set({ cityMapData: data }),
     setConnected: (connected) => set({ isConnected: connected }),
     setError: (error) => set({ error }),
+    resetRetry: () => set({ retryCount: 0 }),
     
     connect: () => {
+      const currentRetry = get().retryCount;
+      
+      // 超过最大重试次数，停止重试
+      if (currentRetry >= MAX_RETRY_COUNT) {
+        console.log(`[Realtime] 已达到最大重试次数(${MAX_RETRY_COUNT})，停止重连`);
+        set({ 
+          isConnected: false, 
+          error: '连接失败，请检查服务器状态',
+          data: null,  // 清空数据，显示未连接状态
+        });
+        return;
+      }
+      
       // 如果已连接，先断开
       if (eventSource) {
         eventSource.close();
@@ -116,7 +135,7 @@ export const useRealtimeStore = create<RealtimeStore>()(
       
       eventSource.onopen = () => {
         console.log('[Realtime] SSE连接已建立');
-        set({ isConnected: true, error: null });
+        set({ isConnected: true, error: null, retryCount: 0 });
       };
       
       eventSource.onmessage = (event) => {
@@ -131,15 +150,34 @@ export const useRealtimeStore = create<RealtimeStore>()(
       
       eventSource.onerror = (error) => {
         console.error('[Realtime] SSE连接错误:', error);
-        set({ isConnected: false, error: 'SSE连接断开' });
+        const newRetryCount = get().retryCount + 1;
+        set({ 
+          isConnected: false, 
+          error: `连接断开，重试中(${newRetryCount}/${MAX_RETRY_COUNT})...`,
+          retryCount: newRetryCount,
+        });
         
-        // 5秒后尝试重连
-        setTimeout(() => {
-          if (!get().isConnected) {
-            console.log('[Realtime] 尝试重新连接...');
-            get().connect();
-          }
-        }, 5000);
+        // 关闭当前连接
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        
+        // 如果未超过最大重试次数，5秒后尝试重连
+        if (newRetryCount < MAX_RETRY_COUNT) {
+          setTimeout(() => {
+            if (!get().isConnected) {
+              console.log(`[Realtime] 尝试重新连接(${newRetryCount + 1}/${MAX_RETRY_COUNT})...`);
+              get().connect();
+            }
+          }, 5000);
+        } else {
+          // 超过重试次数，清空数据显示未连接状态
+          set({ 
+            error: '连接失败，请检查服务器状态',
+            data: null,
+          });
+        }
       };
     },
     
@@ -148,7 +186,7 @@ export const useRealtimeStore = create<RealtimeStore>()(
         eventSource.close();
         eventSource = null;
       }
-      set({ isConnected: false });
+      set({ isConnected: false, retryCount: 0 });
     },
   }))
 );

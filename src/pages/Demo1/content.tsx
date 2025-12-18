@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import styled, { keyframes } from "styled-components";
 import AutoFit from "@/components/autoFit";
 import { useConfigStore } from "./stores";
@@ -69,10 +69,11 @@ const fadeInUp = keyframes`
 const getEventColor = (type: string, isLight: boolean) => {
   // 亮色背景用深色，暗色背景用亮色
   const colors: Record<string, [string, string]> = {
-    customer_add: ['#166534', '#4ade80'],     // 深绿/亮绿
-    task_complete: ['#1e40af', '#60a5fa'],    // 深蓝/亮蓝
-    volume_high: ['#c2410c', '#fb923c'],      // 深橙/亮橙
-    business_ratio: ['#7e22ce', '#c084fc'],   // 深紫/亮紫
+    customer_add: ['#166534', '#4ade80'],     // 深绿/亮绿 - 新客户开发成功
+    task_complete: ['#1e40af', '#60a5fa'],    // 深蓝/亮蓝 - 任务完成
+    volume_high: ['#c2410c', '#fb923c'],      // 深橙/亮橙 - 发件量超历史最高
+    business_ratio: ['#7e22ce', '#c084fc'],   // 深紫/亮紫 - 业务占比达标
+    new_customer: ['#166534', '#4ade80'],     // 深绿/亮绿 - 新客户（兼容）
   };
   const [dark, light] = colors[type] || ['#374151', '#9ca3af'];
   return isLight ? dark : light;
@@ -106,10 +107,11 @@ const BubbleItem = styled.div<{ $type: string; $isLight: boolean }>`
 // 事件类型图标
 const getEventIcon = (type: string) => {
   switch(type) {
-    case 'customer_add': return '👤';
-    case 'task_complete': return '✅';
-    case 'volume_high': return '📈';
-    case 'business_ratio': return '🎯';
+    case 'customer_add': return '🎉';      // 新客户开发成功
+    case 'new_customer': return '🎉';      // 新客户（兼容）
+    case 'task_complete': return '✅';     // 任务完成
+    case 'volume_high': return '📈';       // 发件量超历史最高
+    case 'business_ratio': return '🏆';    // 业务占比达标
     default: return '📢';
   }
 };
@@ -121,14 +123,6 @@ interface SystemEvent {
   content: string;
   created_at: string;
 }
-
-// 备用mock数据（按时间正序，早的在前）
-const fallbackEvents: SystemEvent[] = [
-  { id: 4, type: 'business_ratio', content: '漳州AA快递 业务占比量超过50%', created_at: '10:10' },
-  { id: 3, type: 'volume_high', content: '泉州ZZ物流 当日发件量超历史最高值', created_at: '10:15' },
-  { id: 2, type: 'task_complete', content: '李四 完成了 厦门YY科技 的跟进任务', created_at: '10:18' },
-  { id: 1, type: 'customer_add', content: '张三 新增了客户 福州XX贸易有限公司', created_at: '10:23' },
-];
 
 export default function Content() {
   const viewLevel = useConfigStore((s) => s.viewLevel);
@@ -143,11 +137,17 @@ export default function Content() {
   const [visibleEvents, setVisibleEvents] = useState<(SystemEvent & { delay: number })[]>([]);
   
   // 加载事件数据（根据视图级别筛选：省级=全省，市级=该市）
+  // 只显示真实数据，不使用假数据
   useEffect(() => {
     const fetchEvents = async () => {
       try {
+        // 获取基础URL（支持iframe嵌入场景）
+        const baseUrl = window.parent !== window 
+          ? window.parent.location.origin 
+          : window.location.origin;
+        
         // 构建API URL，市级视图时传city参数
-        let url = '/crm/api/v4/events/today?limit=50';
+        let url = `${baseUrl}/crm/api/v4/events/today?limit=50`;
         if (viewLevel === 'city' && selectedCity) {
           url += `&city=${encodeURIComponent(selectedCity)}`;
         }
@@ -158,33 +158,45 @@ export default function Content() {
           // 反转数组，让时间早的在前面先出现
           setEvents([...data.events].reverse());
         } else {
-          // 省级视图用fallback，市级视图无数据则显示空
-          setEvents(viewLevel === 'province' ? fallbackEvents : []);
+          // 无数据时显示空，不使用假数据
+          setEvents([]);
         }
       } catch (err) {
-        console.warn('获取事件数据失败，使用备用数据', err);
-        // 省级视图用fallback，市级视图无数据则显示空
-        setEvents(viewLevel === 'province' ? fallbackEvents : []);
+        console.warn('获取事件数据失败', err);
+        // 请求失败时显示空，不使用假数据
+        setEvents([]);
       }
     };
     
     // 切换视图时重置弹幕状态
     setVisibleEvents([]);
     setCurrentIndex(0);
+    shownEventIdsRef.current = new Set();
     
     fetchEvents();
-    // 每30秒刷新一次
-    const timer = setInterval(fetchEvents, 30000);
+    // 每10秒刷新一次，更快获取新事件
+    const timer = setInterval(fetchEvents, 10000);
     return () => clearInterval(timer);
   }, [viewLevel, selectedCity]);
   
-  // 循环显示事件弹幕
+  // 记录已显示过的事件ID，避免重复显示（使用 useRef 避免触发重渲染）
+  const shownEventIdsRef = useRef<Set<number>>(new Set());
+  
+  // 逐条显示事件弹幕（每条只显示一次，不循环）
   useEffect(() => {
     if (events.length === 0 || !mode) return;
     
     const interval = setInterval(() => {
       setCurrentIndex(prev => {
-        const next = (prev + 1) % events.length;
+        // 找到下一个未显示过的事件
+        let next = prev + 1;
+        while (next < events.length && shownEventIdsRef.current.has(events[next]?.id)) {
+          next++;
+        }
+        // 如果所有事件都显示过了，停止
+        if (next >= events.length) {
+          return prev; // 保持不变，不再循环
+        }
         return next;
       });
     }, 3000); // 每3秒显示一个新事件
@@ -192,12 +204,15 @@ export default function Content() {
     return () => clearInterval(interval);
   }, [events, mode]);
   
-  // 更新可见事件列表
+  // 更新可见事件列表，并记录已显示的事件
   useEffect(() => {
     if (events.length === 0) return;
     
     const event = events[currentIndex];
-    if (event) {
+    if (event && !shownEventIdsRef.current.has(event.id)) {
+      // 标记为已显示
+      shownEventIdsRef.current.add(event.id);
+      
       setVisibleEvents(prev => {
         const newEvents = [...prev, { ...event, delay: 0 }];
         // 保留最近5个事件

@@ -190,9 +190,13 @@ const UpdateTime = styled.div<{ $isLight: boolean }>`
 `;
 
 export default function RealtimePanel() {
+  // 所有 hooks 必须在组件顶层调用，不能在条件语句之后
   const data = useRealtimeStore((s) => s.data);
   const isConnected = useRealtimeStore((s) => s.isConnected);
   const lastUpdate = useRealtimeStore((s) => s.lastUpdate);
+  const error = useRealtimeStore((s) => s.error);
+  const resetRetry = useRealtimeStore((s) => s.resetRetry);
+  const connect = useRealtimeStore((s) => s.connect);
   const bgMode = useConfigStore((s) => s.bgMode);
   const mode = useConfigStore((s) => s.mode);
   const isLight = bgMode === "light";
@@ -200,23 +204,48 @@ export default function RealtimePanel() {
   // 关闭了mode时不显示面板
   if (!mode) return null;
 
-  // 没有数据时显示等待状态
+  // 手动重连
+  const handleReconnect = () => {
+    resetRetry();
+    connect();
+  };
+
+  // 没有数据时显示等待/未连接状态
   if (!data) {
+    const hasError = error && error.includes('连接失败');
     return (
       <PanelContainer $isLight={isLight}>
         <DataCard $isLight={isLight}>
           <CardTitle $isLight={isLight}>
             📦 实时发单数据
             <ConnectionStatus $connected={isConnected}>
-              {isConnected ? '已连接' : '连接中...'}
+              {isConnected ? '已连接' : hasError ? '未连接' : '连接中...'}
             </ConnectionStatus>
           </CardTitle>
           <MainValue $isLight={isLight} style={{ fontSize: '18px', opacity: 0.6 }}>
-            等待数据推送...
+            {hasError ? '服务未连接' : '等待数据推送...'}
           </MainValue>
           <SubValue $isLight={isLight}>
-            请确保爬虫服务正在运行
+            {error || '请确保爬虫服务正在运行'}
           </SubValue>
+          {hasError && (
+            <button
+              onClick={handleReconnect}
+              style={{
+                marginTop: '12px',
+                padding: '8px 16px',
+                background: isLight ? '#ea580c' : '#fb923c',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500,
+              }}
+            >
+              🔄 重新连接
+            </button>
+          )}
         </DataCard>
       </PanelContainer>
     );
