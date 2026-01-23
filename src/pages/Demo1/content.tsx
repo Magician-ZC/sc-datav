@@ -1,11 +1,13 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef } from "react";
 import styled, { keyframes } from "styled-components";
 import AutoFit from "@/components/autoFit";
 import { useConfigStore } from "./stores";
+import { useEventStore, fetchTodayEvents } from "./stores/eventStore";
 
 import Headder from "./headder";
 import Footer from "./footer";
 import RealtimePanel from "./RealtimePanel";
+import RightDataPanel from "./RightDataPanel";
 
 const BackButton = styled.button`
   position: fixed;
@@ -38,19 +40,36 @@ const BackButton = styled.button`
   }
 `;
 
-// 弹幕容器 - 右侧，新事件在底部出现，旧事件往上推
+// 弹幕容器 - 右侧下方，支持滚动查看历史（最新消息在底部）
 const BubbleContainer = styled.div`
   position: fixed;
   right: 30px;
-  bottom: 140px;
-  width: 380px;
+  bottom: 100px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  pointer-events: none;
-  z-index: 100;
-  max-height: 60vh;
-  overflow: hidden;
+  gap: 10px;
+  pointer-events: auto;
+  z-index: 90;
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-items: flex-end;
+  padding-right: 8px;
+  
+  /* 自定义滚动条 */
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(234, 88, 12, 0.3);
+    border-radius: 2px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(234, 88, 12, 0.5);
+  }
 `;
 
 // 入场动画 - 从底部淡入
@@ -81,7 +100,7 @@ const getEventColor = (type: string, isLight: boolean) => {
 
 // 单个弹幕项 - 透明背景，颜色根据背景模式调整
 const BubbleItem = styled.div<{ $type: string; $isLight: boolean }>`
-  padding: 10px 0;
+  padding: 8px 0;
   background: transparent;
   color: ${props => getEventColor(props.$type, props.$isLight)};
   font-size: 18px;
@@ -90,16 +109,17 @@ const BubbleItem = styled.div<{ $type: string; $isLight: boolean }>`
   text-shadow: ${props => props.$isLight 
     ? '0 1px 2px rgba(255, 255, 255, 0.8)' 
     : '0 2px 8px rgba(0, 0, 0, 0.6)'};
+  white-space: nowrap;
   
   .event-icon {
-    margin-right: 10px;
-    font-size: 20px;
+    margin-right: 8px;
+    font-size: 18px;
   }
   
   .event-time {
-    font-size: 13px;
+    font-size: 12px;
     opacity: 0.7;
-    margin-top: 4px;
+    margin-left: 12px;
     color: ${props => props.$isLight ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.6)'};
   }
 `;
@@ -116,13 +136,8 @@ const getEventIcon = (type: string) => {
   }
 };
 
-// 事件数据接口
-interface SystemEvent {
-  id: number;
-  type: string;
-  content: string;
-  created_at: string;
-}
+// 事件数据接口（从store导入）
+// interface SystemEvent 已从 eventStore 导入
 
 export default function Content() {
   const viewLevel = useConfigStore((s) => s.viewLevel);
@@ -132,94 +147,46 @@ export default function Content() {
   const bgMode = useConfigStore((s) => s.bgMode);
   const isLightBg = bgMode === "light";
   
-  const [events, setEvents] = useState<SystemEvent[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [visibleEvents, setVisibleEvents] = useState<(SystemEvent & { delay: number })[]>([]);
+  // 使用事件流store
+  const events = useEventStore((s) => s.events);
+  const connect = useEventStore((s) => s.connect);
+  const disconnect = useEventStore((s) => s.disconnect);
+  const setEvents = useEventStore((s) => s.setEvents);
+  const clearEvents = useEventStore((s) => s.clearEvents);
   
-  // 加载事件数据（根据视图级别筛选：省级=全省，市级=该市）
-  // 只显示真实数据，不使用假数据
+  // 调试：监控events变化
   useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        // 获取基础URL（支持iframe嵌入场景）
-        const baseUrl = window.parent !== window 
-          ? window.parent.location.origin 
-          : window.location.origin;
-        
-        // 构建API URL，市级视图时传city参数
-        let url = `${baseUrl}/crm/api/v4/events/today?limit=50`;
-        if (viewLevel === 'city' && selectedCity) {
-          url += `&city=${encodeURIComponent(selectedCity)}`;
-        }
-        
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.success && data.events?.length > 0) {
-          // 反转数组，让时间早的在前面先出现
-          setEvents([...data.events].reverse());
-        } else {
-          // 无数据时显示空，不使用假数据
-          setEvents([]);
-        }
-      } catch (err) {
-        console.warn('获取事件数据失败', err);
-        // 请求失败时显示空，不使用假数据
-        setEvents([]);
-      }
-    };
-    
-    // 切换视图时重置弹幕状态
-    setVisibleEvents([]);
-    setCurrentIndex(0);
-    shownEventIdsRef.current = new Set();
-    
-    fetchEvents();
-    // 每10秒刷新一次，更快获取新事件
-    const timer = setInterval(fetchEvents, 10000);
-    return () => clearInterval(timer);
-  }, [viewLevel, selectedCity]);
-  
-  // 记录已显示过的事件ID，避免重复显示（使用 useRef 避免触发重渲染）
-  const shownEventIdsRef = useRef<Set<number>>(new Set());
-  
-  // 逐条显示事件弹幕（每条只显示一次，不循环）
-  useEffect(() => {
-    if (events.length === 0 || !mode) return;
-    
-    const interval = setInterval(() => {
-      setCurrentIndex(prev => {
-        // 找到下一个未显示过的事件
-        let next = prev + 1;
-        while (next < events.length && shownEventIdsRef.current.has(events[next]?.id)) {
-          next++;
-        }
-        // 如果所有事件都显示过了，停止
-        if (next >= events.length) {
-          return prev; // 保持不变，不再循环
-        }
-        return next;
-      });
-    }, 3000); // 每3秒显示一个新事件
-    
-    return () => clearInterval(interval);
+    console.log(`[Content] events 更新, 数量: ${events.length}, mode: ${mode}`);
   }, [events, mode]);
   
-  // 更新可见事件列表，并记录已显示的事件
+  // 弹幕容器ref，用于自动滚动到底部
+  const bubbleContainerRef = useRef<HTMLDivElement>(null);
+  
+  // 连接事件流（根据视图级别筛选）
   useEffect(() => {
-    if (events.length === 0) return;
+    clearEvents();
     
-    const event = events[currentIndex];
-    if (event && !shownEventIdsRef.current.has(event.id)) {
-      // 标记为已显示
-      shownEventIdsRef.current.add(event.id);
-      
-      setVisibleEvents(prev => {
-        const newEvents = [...prev, { ...event, delay: 0 }];
-        // 保留最近5个事件
-        return newEvents.slice(-5);
-      });
+    // 加载今日历史事件
+    const city = viewLevel === 'city' && selectedCity ? selectedCity : null;
+    fetchTodayEvents(city).then((todayEvents) => {
+      if (todayEvents.length > 0) {
+        // 后端返回按时间倒序（最新在前），直接使用
+        setEvents(todayEvents);
+      }
+    });
+    
+    // 连接轮询，接收新事件
+    connect(city);
+    
+    return () => disconnect();
+  }, [viewLevel, selectedCity]);
+  
+  // 新事件到来时自动滚动到底部（最新消息在底部）
+  useEffect(() => {
+    if (bubbleContainerRef.current && events.length > 0) {
+      bubbleContainerRef.current.scrollTop = bubbleContainerRef.current.scrollHeight;
     }
-  }, [currentIndex, events]);
+  }, [events.length]);
 
   return (
     <AutoFit>
@@ -235,18 +202,21 @@ export default function Content() {
       {/* 左侧实时数据面板 */}
       <RealtimePanel />
       
-      {/* 右侧事件弹幕 - 时间早的在上面，新事件从底部冒出 */}
-      {mode && (
-        <BubbleContainer>
-          {visibleEvents.map((event, index) => (
+      {/* 右侧数据看板 - 拜访次数和触达件量 */}
+      <RightDataPanel />
+      
+      {/* 右侧事件弹幕 - 时间早的在上面，可滚动查看历史 */}
+      {mode && events.length > 0 && (
+        <BubbleContainer ref={bubbleContainerRef}>
+          {events.map((event) => (
             <BubbleItem 
-              key={`${event.id}-${index}`} 
+              key={event.id} 
               $type={event.type}
               $isLight={isLightBg}
             >
               <span className="event-icon">{getEventIcon(event.type)}</span>
               {event.content}
-              <div className="event-time">{event.created_at}</div>
+              <span className="event-time">{event.created_at}</span>
             </BubbleItem>
           ))}
         </BubbleContainer>

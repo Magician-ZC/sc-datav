@@ -39,8 +39,8 @@ export default function Bar(props: CityBarProps) {
     position,
     value = Math.floor(Math.random() * 1000) + 100,
     children,
-    uColor1 = new Color(0xfbdf88),
-    uColor2 = new Color(0xea580c),
+    uColor1 = new Color(0xffff66),
+    uColor2 = new Color(0xffcc00),
     dir = "y",
     factor = 5,
     max = 1000,
@@ -52,10 +52,22 @@ export default function Bar(props: CityBarProps) {
 
   const [texture1, texture2] = use(textures);
 
-  // 目标高度
-  const targetHeight = useMemo(() => {
-    return 4.0 * factor * (value / max);
-  }, [value, factor, max]);
+  // 最大高度限制
+  const MAX_HEIGHT = 12;
+  const BASE_WIDTH = 0.1 * factor;
+
+  // 计算高度和粗细
+  const { targetHeight, barWidth } = useMemo(() => {
+    const rawHeight = 4.0 * factor * (value / max);
+    if (rawHeight <= MAX_HEIGHT) {
+      // 未超过最大高度，正常显示
+      return { targetHeight: rawHeight, barWidth: BASE_WIDTH };
+    } else {
+      // 超过最大高度，高度固定，通过粗细表示
+      const overflowRatio = rawHeight / MAX_HEIGHT;
+      return { targetHeight: MAX_HEIGHT, barWidth: BASE_WIDTH * Math.sqrt(overflowRatio) };
+    }
+  }, [value, factor, max, BASE_WIDTH]);
 
   // 当前显示高度（用于动画）
   const [barHeight, setBarHeight] = useState(targetHeight);
@@ -115,7 +127,7 @@ export default function Bar(props: CityBarProps) {
           />
         </instancedMesh>
         <boxGeometry
-          args={[0.1 * factor, 0.1 * factor, barHeight]}
+          args={[barWidth, barWidth, barHeight]}
           translate={[0, 0, barHeight / 2]}
         />
         <meshBasicMaterial
@@ -189,13 +201,12 @@ export default function Bar(props: CityBarProps) {
         <planeGeometry args={[5, 5]} />
         <meshBasicMaterial
           transparent
-          color={0xffffff}
+          color={0xffcc00}
           map={texture1}
           alphaMap={texture1}
           opacity={1}
           depthTest={false}
           fog={false}
-          blending={AdditiveBlending}
         />
       </mesh>
       {typeof children === "function" ? children?.(barHeight) : children}

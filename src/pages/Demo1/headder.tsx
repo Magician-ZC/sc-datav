@@ -16,22 +16,22 @@ const Title = styled.div`
   font-size: 36px;
   letter-spacing: 8px;
   color: #fff;
-  text-shadow: 0 8px 10px rgba(255, 145, 0, 0.8);
+  text-shadow: 0 8px 10px rgba(220, 38, 38, 0.8);
   font-weight: 700;
-  background: linear-gradient(to bottom, #ea580c, #ff9100);
+  background: linear-gradient(to bottom, #dc2626, #ef4444);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   text-align: center;
 
   &::after {
-    content: "SMART EXPRESS DATA BRAIN";
+    content: "ACC CUSTOMER STRATEGY MAP";
     display: block;
     font-size: 12px;
     letter-spacing: 12px;
     text-align: center;
-    color: rgba(255, 145, 0, 0.6);
+    color: rgba(220, 38, 38, 0.6);
     margin-top: -5px;
-    -webkit-text-fill-color: rgba(255, 145, 0, 0.6);
+    -webkit-text-fill-color: rgba(220, 38, 38, 0.6);
   }
 `;
 
@@ -111,7 +111,7 @@ export default function Headder(props: ComponentProps<typeof TitleWrapper>) {
   return (
     <TitleWrapper {...props}>
       <BgSvg isDark={isDark} />
-      <Title>智慧快递数据大脑</Title>
+      <Title>ACC客户战略地图</Title>
     </TitleWrapper>
   );
 }

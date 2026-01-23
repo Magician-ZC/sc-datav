@@ -1,5 +1,6 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
+import { Line } from "@react-three/drei";
 import {
   DoubleSide,
   Shape,
@@ -15,6 +16,7 @@ import Bar from "./bar";
 import Label from "./label";
 import { getDistrictData } from "../districtData";
 import { useConfigStore } from "../stores";
+import { useMapStatsStore } from "../stores/mapStatsStore";
 
 export interface DistrictProps {
   bbox: Box2;
@@ -22,6 +24,7 @@ export interface DistrictProps {
   color: string;
   sideColor: string;
   offset: [number, number];
+  alwaysShowTooltip?: boolean; // 是否始终显示tooltip
   data: {
     name: string;
     centerId: [x: number, y: number, z: number];
@@ -30,54 +33,65 @@ export interface DistrictProps {
 }
 
 export default function District(props: DistrictProps) {
-  const { data, bbox, depth, color, sideColor, offset } = props;
+  const { data, bbox, depth, color, sideColor, offset, alwaysShowTooltip = true } = props;
   const groupRef = useRef<Group>(null!);
-  const tooltipRef = useRef<{ open: () => void; close: () => void }>(null!);
+  const tooltipRef = useRef<{ open: () => void; close: () => void; setAlwaysShow: (show: boolean) => void }>(null!);
   const vector3 = useRef(new Vector3(1, 1, 1));
 
   // 获取当前选中的城市名称
-  const selectedCity = useConfigStore((s) => s.selectedCity);
+  const mapPlayComplete = useConfigStore((s) => s.mapPlayComplete);
+  const tooltipAlwaysShow = useConfigStore((s) => s.tooltipAlwaysShow);
   
-  // 获取区县数据
-  const districtInfo = getDistrictData(data.name);
+  // 优先使用地图统计数据中的区县数据
+  const districtStatsData = useMapStatsStore((s) => s.districtData);
+  
+  // 获取区县数据：优先使用API数据，回退到静态数据
+  const staticDistrictInfo = getDistrictData(data.name);
+  const districtInfo = districtStatsData[data.name] ?? staticDistrictInfo;
 
-  const [shape, shapeGeometry] = useMemo(() => {
+  // 地图加载完成后根据tooltipAlwaysShow状态决定是否自动显示tooltip
+  useEffect(() => {
+    if (mapPlayComplete && tooltipRef.current) {
+      const timer = setTimeout(() => {
+        // 根据alwaysShowTooltip属性和全局tooltipAlwaysShow状态决定是否始终显示
+        const shouldAlwaysShow = alwaysShowTooltip && tooltipAlwaysShow;
+        tooltipRef.current?.setAlwaysShow(shouldAlwaysShow);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [alwaysShowTooltip, mapPlayComplete, tooltipAlwaysShow]);
+
+  const [shape, , linePoints] = useMemo(() => {
     const shapes = data.points.map((e) => new Shape(e));
     const shapeGeometry = new ShapeGeometry(shapes);
-    return [shapes, shapeGeometry];
-  }, [data.points]);
+    // 提取边界线点用于粗线条渲染
+    const lines: [number, number, number][][] = data.points.map((polygon) =>
+      polygon.map((p) => [p.x, p.y, depth + 0.2] as [number, number, number])
+    );
+    return [shapes, shapeGeometry, lines];
+  }, [data.points, depth]);
 
   useFrame(() => {
     groupRef.current.scale.lerp(vector3.current, 0.1);
   });
 
-  // 点击区县跳转到CRM地图（父页面跳转，因为当前是iframe）
-  const handleClick = (e: { stopPropagation: () => void }) => {
-    e.stopPropagation();
+  // 点击区县 - 通知父页面切换到2D视图并定位到该区县
+  const handleClick = (e?: { stopPropagation: () => void }) => {
+    e?.stopPropagation();
     
-    // 构建跳转URL，带上city和district参数
-    const params = new URLSearchParams();
-    if (selectedCity) {
-      // 去掉"市"后缀，与CRM地图参数格式一致
-      params.set('city', selectedCity.replace('市', ''));
-    }
-    // 区县名称直接使用
-    params.set('district', data.name);
-    params.set('zoom', '15'); // 设置合适的缩放级别
+    const districtName = data.name;
     
-    // 通过父页面跳转到CRM地图（因为当前组件在iframe中）
-    const targetUrl = `/crm/map?${params.toString()}`;
-    
-    // 尝试跳转父页面，如果失败则跳转当前页面
+    // 通过 postMessage 通知父页面（dashboard）切换到2D视图
     try {
       if (window.parent && window.parent !== window) {
-        window.parent.location.href = targetUrl;
-      } else {
-        window.location.href = targetUrl;
+        window.parent.postMessage({
+          type: 'navigateToDistrict',
+          district: districtName,
+          zoom: 14
+        }, '*');
       }
-    } catch {
-      // 跨域情况下使用postMessage
-      window.parent.postMessage({ type: 'navigate', url: targetUrl }, '*');
+    } catch (err) {
+      console.error('发送消息失败:', err);
     }
   };
 
@@ -111,10 +125,16 @@ export default function District(props: DistrictProps) {
           color={sideColor}
         />
       </mesh>
-      <lineSegments position-z={depth + 0.2} raycast={() => null}>
-        <edgesGeometry args={[shapeGeometry]} />
-        <lineBasicMaterial transparent opacity={0} color="#ffffff" />
-      </lineSegments>
+      {linePoints.map((points, i) => (
+        <Line
+          key={i}
+          points={points}
+          color="#E60000"
+          lineWidth={2}
+          transparent
+          opacity={0}
+        />
+      ))}
 
       <Bar
         position={data.centerId}
@@ -127,7 +147,8 @@ export default function District(props: DistrictProps) {
               center
               position={[0, 0, barHeight + 0.2]}
               distanceFactor={100}
-              zIndexRange={[100 - 1000]}>
+              zIndexRange={[100 - 1000]}
+              onClick={handleClick}>
               {data.name}
             </Label>
             <Tooltip

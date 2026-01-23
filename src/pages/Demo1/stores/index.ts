@@ -1,5 +1,12 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
+import { fetchDistrictMapData, useMapStatsStore } from "./mapStatsStore";
+
+// 导出其他stores
+export { useEventStore, fetchTodayEvents } from "./eventStore";
+export { useRealtimeStore, fetchCurrentData } from "./realtimeStore";
+export { useMapStatsStore, fetchMapStatsData, fetchDistrictMapData, fetch2DChartData } from "./mapStatsStore";
+export type { MapStatsData, CityMapStatsData } from "./mapStatsStore";
 
 interface ConfigStore {
   mapPlayComplete: boolean;
@@ -8,6 +15,7 @@ interface ConfigStore {
   rotation: boolean;
   bgMode: "light" | "starry";  // 背景模式: light(浅色) / starry(星空)
   mode: boolean;
+  tooltipAlwaysShow: boolean;  // 面板信息是否始终显示（false时仅hover显示）
   // 地图视图状态
   viewLevel: "province" | "city";
   selectedCity: string | null;
@@ -30,6 +38,7 @@ export const useConfigStore = create<ConfigStore>()(
     rotation: true,
     bgMode: "light",
     mode: true,
+    tooltipAlwaysShow: false,  // 默认不显示面板信息
     viewLevel: "province",
     selectedCity: null,
     selectedCityCode: null,
@@ -38,11 +47,18 @@ export const useConfigStore = create<ConfigStore>()(
     toggle: (key) => set((s) => ({ [key]: !s[key] })),
     toggleBgMode: () => set((s) => ({ bgMode: s.bgMode === "light" ? "starry" : "light" })),
     // 切换视图时不重置mapPlayComplete，避免表单动效重新播放
-    setSelectedCity: (city, adcode) => set({ 
-      viewLevel: "city", 
-      selectedCity: city, 
-      selectedCityCode: adcode,
-    }),
+    setSelectedCity: (city, adcode) => {
+      set({ 
+        viewLevel: "city", 
+        selectedCity: city, 
+        selectedCityCode: adcode,
+      });
+      // 获取区县级地图统计数据
+      fetchDistrictMapData(city).then((data) => {
+        useMapStatsStore.getState().setDistrictData(city, data);
+        console.log(`[MapStats] 已加载 ${city} 区县数据:`, Object.keys(data).length, '个区县');
+      });
+    },
     backToProvince: () => set({ 
       viewLevel: "province", 
       selectedCity: null, 

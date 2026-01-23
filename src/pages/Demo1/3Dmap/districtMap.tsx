@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, useEffect } from "react";
 import { gsap } from "gsap";
-import { Box2, LineSegments, Mesh, Vector2, type Group } from "three";
+import { Box2, Mesh, Vector2, type Group } from "three";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
 import { geoMercator } from "d3-geo";
 import type { CityGeoJSON } from "@/types/map";
 import District from "./district";
@@ -11,24 +12,12 @@ export interface DistrictMapProps {
   depth?: number;
 }
 
-// 区县颜色列表
+// 区县颜色列表 - 极兔品牌风格（浅灰白）
 const districtColors = [
-  { color: "#3498db", sideColor: "#2980b9" },
-  { color: "#e74c3c", sideColor: "#c0392b" },
-  { color: "#2ecc71", sideColor: "#27ae60" },
-  { color: "#9b59b6", sideColor: "#8e44ad" },
-  { color: "#f39c12", sideColor: "#d68910" },
-  { color: "#1abc9c", sideColor: "#16a085" },
-  { color: "#e67e22", sideColor: "#d35400" },
-  { color: "#34495e", sideColor: "#2c3e50" },
-  { color: "#27ae60", sideColor: "#2ecc71" },
-  { color: "#c0392b", sideColor: "#e74c3c" },
-  { color: "#d35400", sideColor: "#e67e22" },
-  { color: "#8e44ad", sideColor: "#9b59b6" },
-  { color: "#2980b9", sideColor: "#3498db" },
+  { color: "#E8E8E8", sideColor: "#D0D0D0" },
 ];
 
-// 浮岛间隙系数 - 区县级更大
+// 浮岛间隙系数 - 区县级保持间隙效果
 const GAP_FACTOR = 0.35;
 
 export default function DistrictMap(props: DistrictMapProps) {
@@ -51,29 +40,56 @@ export default function DistrictMap(props: DistrictMapProps) {
   }, [cityCode]);
 
   // 使用固定的中心点进行投影，确保地图居中显示
+  // 根据城市面积动态调整缩放比例，保证小城市也能正常显示
   const projection = useMemo(() => {
     if (!mapData || mapData.features.length === 0) return null;
     
-    // 计算所有区县的边界框中心作为投影中心
+    // 计算所有区县的边界框
     let minLng = Infinity, maxLng = -Infinity;
     let minLat = Infinity, maxLat = -Infinity;
     
     mapData.features.forEach((feature) => {
-      const center = feature.properties.centroid ?? feature.properties.center;
-      if (center) {
-        minLng = Math.min(minLng, center[0]);
-        maxLng = Math.max(maxLng, center[0]);
-        minLat = Math.min(minLat, center[1]);
-        maxLat = Math.max(maxLat, center[1]);
-      }
+      // 遍历所有坐标点来计算真实边界
+      feature.geometry.coordinates.forEach((polygon) => {
+        polygon.forEach((ring) => {
+          ring.forEach((coord: number[]) => {
+            minLng = Math.min(minLng, coord[0]);
+            maxLng = Math.max(maxLng, coord[0]);
+            minLat = Math.min(minLat, coord[1]);
+            maxLat = Math.max(maxLat, coord[1]);
+          });
+        });
+      });
     });
     
     const centerLng = (minLng + maxLng) / 2;
     const centerLat = (minLat + maxLat) / 2;
     
+    // 计算经纬度跨度
+    const lngSpan = maxLng - minLng;
+    const latSpan = maxLat - minLat;
+    const maxSpan = Math.max(lngSpan, latSpan);
+    
+    // 目标视口大小（Three.js单位），让地图铺满大约80的范围
+    const TARGET_SIZE = 80;
+    
+    // 考虑浮岛间隙：间隙会让地图整体变大，需要额外的空间
+    // GAP_FACTOR=0.35 意味着每个区块会向外偏移其到中心距离的35%
+    // 整体地图大小约为原始大小的 (1 + GAP_FACTOR) 倍
+    const GAP_EXPANSION = 1 + GAP_FACTOR;
+    
+    // 根据跨度动态计算缩放比例
+    // 经验值：scale=1000时，1度约等于17.5个单位
+    const UNITS_PER_DEGREE_AT_1000 = 17.5;
+    
+    // 计算需要的缩放比例，使地图（含间隙）铺满目标大小
+    const scale = (TARGET_SIZE / (maxSpan * GAP_EXPANSION)) * (1000 / UNITS_PER_DEGREE_AT_1000);
+    
+    console.log(`[DistrictMap] 城市边界: lng(${minLng.toFixed(2)}-${maxLng.toFixed(2)}), lat(${minLat.toFixed(2)}-${maxLat.toFixed(2)}), span: ${maxSpan.toFixed(3)}, scale: ${scale.toFixed(0)}`);
+    
     return geoMercator()
       .center([centerLng, centerLat])
-      .scale(2500)  // 放大2.5倍
+      .scale(scale)
       .translate([0, 0]); // 投影到原点，确保居中
   }, [mapData]);
 
@@ -164,7 +180,7 @@ export default function DistrictMap(props: DistrictMapProps) {
       )
     );
     groupRef.current.traverse((obj) => {
-      if (obj instanceof Mesh || obj instanceof LineSegments) {
+      if (obj instanceof Mesh || obj instanceof Line2) {
         tl.add(
           tl.to(obj.material, { opacity: 1, duration: 0.6, ease: "circ.out" }, 0.2),
           0

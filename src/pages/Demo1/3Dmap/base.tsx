@@ -1,7 +1,8 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import { gsap } from "gsap";
-import { Box2, LineSegments, Mesh, Vector2, type Group } from "three";
+import { Box2, Mesh, Vector2, type Group } from "three";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
 import { geoMercator } from "d3-geo";
 import type { CityGeoJSON } from "@/types/map";
 import City, { type CityProps } from "./city";
@@ -13,8 +14,8 @@ export interface BaseProps {
   outlineData?: CityGeoJSON;
 }
 
-// 浮岛间隙系数 - 控制区域之间的间距大小
-const GAP_FACTOR = 0.15;
+// 浮岛间隙系数 - 控制区域之间的间距大小（增大以便更好展示tooltip）
+const GAP_FACTOR = 0.6;
 
 export default function Base(props: BaseProps) {
   const { data, depth = 6 } = props;
@@ -101,11 +102,12 @@ export default function Base(props: BaseProps) {
       },
     });
 
+    // 摄像头动画：从远处移动到近处，更好的展示效果
     tl.add(
       gsap.to(camera.position, {
-        x: 60,
-        y: 125,
-        z: 160,
+        x: 30,
+        y: 70,
+        z: 100,
         duration: 2,
         ease: "circ.out",
       })
@@ -118,7 +120,7 @@ export default function Base(props: BaseProps) {
       )
     );
     groupRef.current.traverse((obj) => {
-      if (obj instanceof Mesh || obj instanceof LineSegments) {
+      if (obj instanceof Mesh || obj instanceof Line2) {
         tl.add(
           tl.to(obj.material, { opacity: 1, duration: 1, ease: "circ.out" }, 2),
           3
@@ -147,6 +149,7 @@ export default function Base(props: BaseProps) {
           data={region}
           adcode={region.adcode}
           offset={region.offset}
+          alwaysShowTooltip={true}
         />
       ))}
     </group>

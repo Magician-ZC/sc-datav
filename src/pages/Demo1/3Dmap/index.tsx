@@ -20,10 +20,10 @@ export default function Index() {
       <Canvas
         flat
         shadows
-        camera={{ position: [-50, 125, 250], fov: 50, far: 2000, near: 1 }}
+        camera={{ position: [-20, 60, 120], fov: 50, far: 2000, near: 1 }}
         dpr={[1, 2]}
 >
-        <color attach="background" args={[bgMode === "starry" ? "#26282a" : "#fff5e8"]} />
+        <color attach="background" args={[bgMode === "starry" ? "#FFFFFF" : "#FAFAFA"]} />
         {bgMode === "starry" && (
           <>
             <Stars fade count={1000} factor={8} saturation={0} speed={2} />
@@ -61,8 +61,8 @@ export default function Index() {
           enableZoom
           enableRotate
           zoomSpeed={0.3}
-          minDistance={100}
-          maxDistance={300}
+          minDistance={80}
+          maxDistance={250}
           maxPolarAngle={1.5}
         />
       </Canvas>

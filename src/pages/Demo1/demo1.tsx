@@ -3,6 +3,7 @@ import styled from "styled-components";
 import Content from "./content";
 import Map from "./3Dmap";
 import { useRealtimeStore, fetchCurrentData } from "./stores/realtimeStore";
+import { useMapStatsStore, fetchMapStatsData } from "./stores/mapStatsStore";
 
 const Wrapper = styled.div`
   position: relative;
@@ -11,19 +12,25 @@ const Wrapper = styled.div`
 `;
 
 export default function Index() {
-  const connect = useRealtimeStore((s) => s.connect);
-  const disconnect = useRealtimeStore((s) => s.disconnect);
+  const connectRealtime = useRealtimeStore((s) => s.connect);
+  const disconnectRealtime = useRealtimeStore((s) => s.disconnect);
+  const connectMapStats = useMapStatsStore((s) => s.connect);
+  const disconnectMapStats = useMapStatsStore((s) => s.disconnect);
 
   useEffect(() => {
     // 先获取当前数据
     fetchCurrentData();
+    fetchMapStatsData();
+    
     // 建立SSE连接
-    connect();
+    connectRealtime();
+    connectMapStats();
     
     return () => {
-      disconnect();
+      disconnectRealtime();
+      disconnectMapStats();
     };
-  }, [connect, disconnect]);
+  }, [connectRealtime, disconnectRealtime, connectMapStats, disconnectMapStats]);
 
   return (
     <Wrapper>

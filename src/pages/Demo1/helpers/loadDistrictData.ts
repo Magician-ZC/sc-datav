@@ -1,7 +1,8 @@
-// 从阿里云DataV加载区县级GeoJSON数据
+// 从后端代理加载区县级GeoJSON数据（避免阿里云DataV的403限流）
 import type { CityGeoJSON } from "@/types/map";
 
-const DATAV_BASE_URL = "https://geo.datav.aliyun.com/areas_v3/bound";
+// 使用后端代理，避免前端直接请求阿里云被限流
+const PROXY_BASE_URL = "/crm/api/map/district";
 
 // 缓存已加载的数据
 const cache = new Map<number, CityGeoJSON>();
@@ -18,8 +19,8 @@ export async function loadDistrictData(adcode: number): Promise<CityGeoJSON> {
   }
 
   try {
-    // 加载完整边界数据（包含子区域）
-    const url = `${DATAV_BASE_URL}/${adcode}_full.json`;
+    // 通过后端代理加载数据
+    const url = `${PROXY_BASE_URL}/${adcode}`;
     const response = await fetch(url);
     
     if (!response.ok) {
